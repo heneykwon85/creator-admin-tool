@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creator Admin Tool</title>
+
+    <!-- 1. Global Error Handler (FIRST THING) -->
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            var errorHtml = '<div style="background:#ffebee;color:#c62828;padding:20px;font-family:monospace;border:1px solid #ef5350;margin:20px;border-radius:4px;">' +
+                '<strong>Runtime Error:</strong> ' + msg + '<br>' +
+                'Line: ' + line + '<br>' +
+                (error && error.stack ? '<pre style="white-space:pre-wrap;">' + error.stack + '</pre>' : '') +
+                '</div>';
+
+            var root = document.getElementById('root');
+            if (root) {
+                root.innerHTML = errorHtml;
+            } else {
+                document.body.innerHTML += errorHtml;
+            }
+            console.error(error);
+            return false;
+        };
+    </script>
+
+    <!-- 2. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 3. React Globals (UMD) - NO ROUTER LIB TO AVOID CONFLICTS -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- 4. Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 5. Supabase JS -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 antialiased">
+    <div id="root">
+        <div style="display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;">
+            <div
+                style="width: 40px; height: 40px; border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;">
+            </div>
+            <div style="margin-top: 20px; color: #666;">Loading Application...</div>
+        </div>
+        <style>
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    <script type="text/babel">
+        // --- Safe Globals Extraction ---
+        const { useState, useEffect, useContext, createContext, useMemo } = React;
+        const { createClient } = window.supabase;
+
+        // --- Supabase Client ---
+        const supabaseUrl = 'https://gwqsjfvxdzhtwahfkero.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3cXNqZnZ4ZHpodHdhaGZrZXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMTYxNTUsImV4cCI6MjA4MDg5MjE1NX0.0_7pnFkE8gtqYawnIYlL7SrRw4vHE7QD80WUCX8crtw';
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        // --- Custom Router (Foolproof) ---
+        const RouterContext = createContext(null);
+
+        function SimpleRouter({ children }) {
+            const [path, setPath] = useState(window.location.hash.slice(1) || '/');
+
+            useEffect(() => {
+                const handleHashChange = () => setPath(window.location.hash.slice(1) || '/');
+                window.addEventListener('hashchange', handleHashChange);
+                return () => window.removeEventListener('hashchange', handleHashChange);
+            }, []);
+
+            const navigate = (to) => {
+                window.location.hash = to;
+            };
+
+            return (
+                <RouterContext.Provider value={{ path, navigate }}>
+                    {children}
+                </RouterContext.Provider>
+            );
+        }
+
+        function useRouter() {
+            return useContext(RouterContext);
+        }
+
+        // --- Utils (Inline) ---
+        function cn(...classes) {
+            return classes.filter(Boolean).join(' ');
+        }
+
+        function formatNumber(num) {
+            if (!num) return '-';
+            if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+            return num.toString();
+        }
+
+        // --- Icons (Inline SVGs) ---
+        const Icons = {
+            LayoutDashboard: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>,
+            Users: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
+            Settings: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>,
+            Plus: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14" /><path d="M12 5v14" /></svg>,
+            Search: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>,
+            ChevronLeft: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m15 18-6-6 6-6" /></svg>,
+            Save: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h8" /></svg>,
+            Trash2: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg>,
+            Activity: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>,
+            Globe: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>,
+            Video: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m22 8-6 4 6 4V8Z" /><rect width="14" height="12" x="2" y="6" rx="2" ry="2" /></svg>,
+            Upload: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>,
+            Download: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>,
+            Copy: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>,
+            Briefcase: ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
+        };
+
+        // --- Mock Data ---
+        const DEFAULT_SETTINGS = {
+            verticals1: ['Gaming', 'Beauty', 'Tech', 'Lifestyle', 'Food', 'Music', 'Education', 'Entertainment', 'Fashion', 'Fitness'],
+            verticals2: ['Console', 'PC', 'Mobile', 'Vlog', 'Tutorial', 'Review', 'Stream', 'Shorts', 'Other'],
+            statuses: ['Preparing', 'Contacting', 'Active', 'Deactive'],
+            platforms: ['TikTok', 'Shorts', 'Reels'],
+            agencies: ['N/A', 'Sandbox', 'Galaxy', 'TalentX'],
+            accountTypes: ['PGC', 'UGC', 'Publisher', 'OGC', 'AIGC'],
+            businessTypes: ['Personal', 'Business'],
+        };
+        const MOCK_CREATORS = [
+            { id: '1', name: 'Alice Gamer', vertical1: 'Gaming', vertical2: 'PC', status: 'Active', followerCount: 1500000, country: 'United States', language: 'English', platform: 'TikTok', url: 'https://tiktok.com/@alice', contactInfo: 'alice@example.com', agency: 'Sandbox', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice', accountType: 'UGC', businessType: 'Personal', contactLogs: [] },
+            { id: '2', name: 'Tech Whiz', vertical1: 'Tech', vertical2: 'Review', status: 'Contacting', followerCount: 500000, country: 'United Kingdom', language: 'English', platform: 'Shorts', url: 'https://youtube.com/@tech', contactInfo: 'tech@example.com', agency: 'N/A', avatarUrl: '', accountType: 'PGC', businessType: 'Business', contactLogs: [] }
+        ];
+
+
+        const COUNTRIES = [
+            "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Japan", "South Korea", "China", "Brazil", "India", "Russia", "Italy", "Spain", "Mexico", "Indonesia", "Turkey", "Netherlands", "Saudi Arabia", "Switzerland", "Sweden", "Poland", "Belgium", "Thailand", "Iran", "Austria", "Norway", "United Arab Emirates", "South Africa", "Denmark", "Malaysia", "Singapore", "Finland", "Vietnam", "Philippines", "Portugal", "Ireland", "New Zealand", "Argentina", "other"
+        ].sort();
+
+        const LANGUAGES = [
+            "English", "Spanish", "Chinese", "Hindi", "Arabic", "Portuguese", "Bengali", "Russian", "Japanese", "German", "Korean", "French", "Turkish", "Italian", "Thai", "Vietnamese", "Polish", "Dutch", "Indonesian", "other"
+        ].sort();
+
+        const getAccountTypeColor = (type) => {
+            switch (type) {
+                case 'PGC': return 'bg-purple-100 text-purple-800 border-purple-200';
+                case 'UGC': return 'bg-blue-100 text-blue-800 border-blue-200';
+                case 'OGC': return 'bg-orange-100 text-orange-800 border-orange-200';
+                case 'AIGC': return 'bg-pink-100 text-pink-800 border-pink-200';
+                case 'Publisher': return 'bg-amber-100 text-amber-800 border-amber-200';
+                default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            }
+        };
+
+        // --- Store ---
+        const StoreContext = createContext(null);
+        function StoreProvider({ children }) {
+            const [creators, setCreators] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+
+            // Fetch Data from Supabase
+            useEffect(() => {
+                const fetchData = async () => {
+                    setIsLoading(true);
+                    try {
+                        let { data, error } = await supabase.from('creators').select('*');
+                        if (error) throw error;
+                        setCreators(data || []);
+                    } catch (err) {
+                        console.error("Error fetching creators:", err);
+                        // Fallback to localmock if necessary, but here we just show error log
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+                fetchData();
+            }, []);
+
+            const [settings, setSettings] = useState(() => {
+                const saved = localStorage.getItem('creator-admin-settings');
+                let parsed = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+                // Migration
+                if (!parsed.accountTypes) parsed.accountTypes = DEFAULT_SETTINGS.accountTypes;
+                else if (!parsed.accountTypes.includes('AIGC')) parsed.accountTypes = [...parsed.accountTypes, 'AIGC'];
+
+                if (!parsed.businessTypes) parsed.businessTypes = DEFAULT_SETTINGS.businessTypes;
+
+                if (!parsed.agencies) parsed.agencies = DEFAULT_SETTINGS.agencies;
+                if (!parsed.verticals1) parsed.verticals1 = parsed.verticals || DEFAULT_SETTINGS.verticals1; // Migrate 'verticals' -> 'verticals1'
+                if (!parsed.verticals2) parsed.verticals2 = DEFAULT_SETTINGS.verticals2;
+                if (parsed.verticals) delete parsed.verticals; // Cleanup old key
+                return parsed;
+            });
+
+            // Settings Persist to LocalStorage on changes
+            useEffect(() => {
+                localStorage.setItem('creator-admin-settings', JSON.stringify(settings));
+            }, [settings]);
+
+            const addCreator = async (c) => {
+                const { id, ...rest } = c; // Let Supabase handle ID usually, but here we might want to ensure it matches
+                // If ID is valid UUID from our randomUUID(), we can use it.
+                const { data, error } = await supabase.from('creators').insert([c]).select();
+                if (error) {
+                    alert('Error adding creator: ' + error.message);
+                } else if (data) {
+                    setCreators(p => [data[0], ...p]);
+                }
+            };
+
+            const addCreators = async (newCreators) => {
+                const { data, error } = await supabase.from('creators').insert(newCreators).select();
+                if (error) {
+                    alert('Error adding creators: ' + error.message);
+                } else if (data) {
+                    setCreators(p => [...data, ...p]);
+                }
+            };
+
+            const updateCreator = async (id, u) => {
+                const { data, error } = await supabase.from('creators').update(u).eq('id', id).select();
+                if (error) {
+                    alert('Error updating creator: ' + error.message);
+                } else if (data) {
+                    setCreators(p => p.map(c => c.id === id ? data[0] : c));
+                }
+            };
+
+            const removeCreator = async (id) => {
+                const { error } = await supabase.from('creators').delete().eq('id', id);
+                if (error) {
+                    alert('Error deleting creator: ' + error.message);
+                } else {
+                    setCreators(p => p.filter(c => c.id !== id));
+                }
+            };
+
+            const addVertical1 = (val) => {
+                if (!settings.verticals1.includes(val)) {
+                    setSettings(prev => ({ ...prev, verticals1: [...prev.verticals1, val].sort() }));
+                }
+            };
+            const addVertical2 = (val) => {
+                if (!settings.verticals2.includes(val)) {
+                    setSettings(prev => ({ ...prev, verticals2: [...prev.verticals2, val].sort() }));
+                }
+            };
+            const manageSetting = (type, action, value, newValue) => {
+                setSettings(prev => {
+                    const list = prev[type] || [];
+                    if (action === 'delete') return { ...prev, [type]: list.filter(v => v !== value) };
+                    if (action === 'update' && newValue) return { ...prev, [type]: list.map(v => v === value ? newValue : v).sort() };
+                    return prev;
+                });
+            };
+            const addAgency = (newAgency) => {
+                if (!settings.agencies.includes(newAgency)) {
+                    setSettings(prev => ({ ...prev, agencies: [...prev.agencies, newAgency].sort() }));
+                }
+            };
+
+            return (
+                <StoreContext.Provider value={{ creators, settings, isLoading, addCreator, addCreators, updateCreator, removeCreator, addVertical1, addVertical2, manageSetting, addAgency }}>
+                    {isLoading ? <div className="flex h-screen items-center justify-center text-gray-500">Loading Data from Supabase...</div> : children}
+                </StoreContext.Provider>
+            );
+        }
+
+        // --- Pages ---
+        const Sidebar = () => {
+            const { path, navigate } = useRouter();
+            const NavItem = ({ to, icon: Icon, children }) => {
+                const isActive = path === to;
+                return (
+                    <button onClick={() => navigate(to)} className={cn("w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors", isActive ? "bg-blue-600 text-white shadow" : "text-gray-600 hover:bg-gray-100")}>
+                        <Icon className="w-4 h-4" /> {children}
+                    </button>
+                )
+            };
+            return (
+                <aside className="w-64 border-r bg-white h-screen hidden md:flex flex-col fixed left-0 top-0 z-10">
+                    <div className="p-6 border-b">
+                        <h1 className="text-xl font-bold text-blue-600">CreatorHub</h1>
+                    </div>
+                    <nav className="flex-1 p-4 space-y-2">
+                        <NavItem to="/" icon={Icons.LayoutDashboard}>Dashboard</NavItem>
+                        <NavItem to="/creators" icon={Icons.Users}>Creators</NavItem>
+                        <NavItem to="/publishers" icon={Icons.Briefcase}>Publishers</NavItem>
+                        <NavItem to="/data" icon={Icons.Download}>Data Management</NavItem>
+                    </nav>
+                    <div className="p-4 border-t">
+                        <button onClick={() => {
+                            if (confirm('This will reset all data to the default sample set. Any unsaved changes will be lost. Continue?')) {
+                                localStorage.removeItem('creator-admin-creators');
+                                window.location.reload();
+                            }
+                        }} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md text-sm font-medium transition-colors">
+                            <Icons.Activity className="w-4 h-4" /> Reset Data
+                        </button>
+                    </div>
+                </aside>
+            );
+        };
+
+        const Dashboard = () => {
+            const { creators } = useContext(StoreContext);
+
+            const onlyCreators = creators.filter(c => c.accountType !== 'Publisher');
+            const publishers = creators.filter(c => c.accountType === 'Publisher');
+
+            const StatCard = ({ title, value, icon: Icon, color }) => (
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+                        <Icon className={cn("w-4 h-4", color)} />
+                    </div>
+                    <div className="text-2xl font-bold">{value}</div>
+                </div>
+            );
+
+            // --- Stats Helpers ---
+            const getStats = (data, key) => data.reduce((acc, c) => {
+                const k = c[key] || 'N/A';
+                acc[k] = (acc[k] || 0) + 1;
+                return acc;
+            }, {});
+
+            const DistributionChart = ({ title, data, color }) => (
+                <div className="bg-white p-6 rounded-xl border shadow-sm h-full">
+                    <h3 className="font-semibold text-gray-800 mb-4">{title}</h3>
+                    <div className="space-y-4">
+                        {Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => (
+                            <div key={label}>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-gray-600 truncate max-w-[150px]" title={label}>{label}</span>
+                                    <span className="font-medium text-gray-900">{count} ({Math.round(count / (data === onlyCreators ? onlyCreators.length : (data === publishers ? publishers.length : creators.length)) * 100)}%)</span>
+                                </div>
+                                <div className="w-full bg-gray-100 rounded-full h-2">
+                                    <div className={cn("h-2 rounded-full", color)} style={{ width: `${(count / (data === onlyCreators ? onlyCreators.length : (data === publishers ? publishers.length : creators.length))) * 100}%` }}></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="p-8">
+                    <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+                    <div className="grid gap-6 md:grid-cols-3 mb-8">
+                        <StatCard title="Total" value={creators.length} icon={Icons.Users} color="text-gray-600" />
+                        <StatCard title="Total Creators" value={onlyCreators.length} icon={Icons.Video} color="text-blue-500" />
+                        <StatCard title="Total Publishers" value={publishers.length} icon={Icons.Briefcase} color="text-purple-500" />
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <DistributionChart title="Platform" data={getStats(creators, 'platform')} color="bg-blue-500" />
+                        <DistributionChart title="Creator Status" data={getStats(onlyCreators, 'status')} color="bg-gray-500" />
+                        <DistributionChart title="Publisher Status" data={getStats(publishers, 'status')} color="bg-orange-500" />
+                        <DistributionChart title="Vertical Tier 1" data={getStats(creators, 'vertical1')} color="bg-green-500" />
+                        <DistributionChart title="Agency" data={getStats(creators, 'agency')} color="bg-purple-500" />
+                        <DistributionChart title="Country" data={getStats(creators, 'country')} color="bg-indigo-500" />
+                    </div>
+                </div>
+            );
+        };
+
+        const CreatorList = () => {
+            const { creators, addCreators, settings } = useContext(StoreContext);
+            const { navigate } = useRouter();
+            const [search, setSearch] = useState('');
+            const [selectedAccountTypes, setSelectedAccountTypes] = useState([]);
+            const [selectedStatuses, setSelectedStatuses] = useState([]);
+            const [currentPage, setCurrentPage] = useState(1);
+            const itemsPerPage = 20;
+
+            const filtered = creators.filter(c => {
+                const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+                const matchesAccountType = selectedAccountTypes.length === 0 || selectedAccountTypes.includes(c.accountType);
+                const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(c.status);
+                return matchesSearch && matchesAccountType && matchesStatus;
+            });
+            const totalPages = Math.ceil(filtered.length / itemsPerPage);
+            const currentItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+            // Reset to page 1 searching
+            useEffect(() => { setCurrentPage(1); }, [search, selectedAccountTypes, selectedStatuses]);
+
+            const fileInputRef = React.useRef(null);
+
+            const handleDownloadTemplate = () => {
+                const headers = ['Account Name', 'Contact Info', 'Agency', 'Platform', 'Vertical Tier 1', 'Vertical Tier 2', 'Account Type', 'Content Type', 'Followers', 'Country', 'Language', 'Status', 'URL', 'Avatar URL'];
+                const example = ['Example Creator', 'email@example.com', 'N/A', 'TikTok', 'Gaming', 'PC', 'Personal', 'UGC', '10000', 'USA', 'English', 'Active', 'https://tiktok.com/@example', ''];
+                const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), example.join(',')].join('\n');
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "creator_template.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const handleBulkUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    const rows = text.split('\n').filter(row => row.trim() !== '');
+                    if (rows.length < 2) return alert('Invalid CSV format');
+
+                    const newCreators = [];
+                    // Skip header row
+                    for (let i = 1; i < rows.length; i++) {
+                        const cols = rows[i].split(',').map(c => c.trim());
+                        if (cols.length < 1 || !cols[0]) continue; // Name required at least
+
+                        newCreators.push({
+                            id: crypto.randomUUID(),
+                            name: cols[0],
+                            contactInfo: cols[1] || '',
+                            agency: cols[2] || 'N/A',
+                            platform: cols[3] || 'TikTok',
+                            vertical1: cols[4] || 'Other',
+                            vertical2: cols[5] || 'Other',
+                            businessType: cols[6] || 'Personal',
+                            accountType: cols[7] || 'UGC',
+                            followerCount: parseInt(cols[8]) || 0,
+                            country: cols[9] || '',
+                            language: cols[10] || '',
+                            status: cols[11] || 'Active',
+                            url: cols[12] || '',
+                            avatarUrl: cols[13] || '',
+                            contactLogs: []
+                        });
+                    }
+
+                    if (newCreators.length > 0) {
+                        addCreators(newCreators);
+                        alert(`Successfully imported ${newCreators.length} creators!`);
+                    }
+                    event.target.value = ''; // Reset input
+                };
+                reader.readAsText(file);
+            };
+
+            return (
+                <div className="p-8 space-y-6">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div className="flex flex-1 gap-2 w-full md:w-auto">
+                            <div className="relative w-full max-w-sm">
+                                <Icons.Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                                <input className="w-full pl-9 h-10 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                    placeholder="Search creators..." value={search} onChange={e => setSearch(e.target.value)} />
+                            </div>
+
+                            {/* Account Type Filter */}
+                            <div className="relative group">
+                                <button className="h-10 px-3 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 flex items-center gap-2 hover:bg-gray-50">
+                                    <span className="truncate max-w-[100px]">{selectedAccountTypes.length === 0 ? 'All Types' : `${selectedAccountTypes.length} Selected`}</span>
+                                    <Icons.ChevronLeft className="w-4 h-4 rotate-[-90deg]" />
+                                </button>
+                                <div className="absolute top-full left-0 pt-1 w-48 hidden group-hover:block z-20">
+                                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 space-y-1">
+                                        {settings.accountTypes.map(type => (
+                                            <label key={type} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                                                <input type="checkbox" checked={selectedAccountTypes.includes(type)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) setSelectedAccountTypes([...selectedAccountTypes, type]);
+                                                        else setSelectedAccountTypes(selectedAccountTypes.filter(t => t !== type));
+                                                    }}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                <span>{type}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Status Filter */}
+                            <div className="relative group">
+                                <button className="h-10 px-3 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 flex items-center gap-2 hover:bg-gray-50">
+                                    <span className="truncate max-w-[100px]">{selectedStatuses.length === 0 ? 'All Status' : `${selectedStatuses.length} Selected`}</span>
+                                    <Icons.ChevronLeft className="w-4 h-4 rotate-[-90deg]" />
+                                </button>
+                                <div className="absolute top-full left-0 pt-1 w-48 hidden group-hover:block z-20">
+                                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 space-y-1">
+                                        {settings.statuses.map(status => (
+                                            <label key={status} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                                                <input type="checkbox" checked={selectedStatuses.includes(status)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) setSelectedStatuses([...selectedStatuses, status]);
+                                                        else setSelectedStatuses(selectedStatuses.filter(t => t !== status));
+                                                    }}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                <span>{status}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={handleDownloadTemplate} className="h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">
+                                <Icons.Download className="w-4 h-4" /> Template
+                            </button>
+                            <button onClick={() => fileInputRef.current.click()} className="h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 border border-blue-600 text-blue-600 bg-white hover:bg-blue-50">
+                                <Icons.Upload className="w-4 h-4" /> Import CSV
+                            </button>
+                            <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".csv" className="hidden" />
+                            <button onClick={() => navigate('/creators/new')} className="bg-blue-600 text-white h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 hover:bg-blue-700">
+                                <Icons.Plus className="w-4 h-4" /> Add Creator
+                            </button>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 border-b"><tr><th className="p-4 font-medium text-gray-500">Account Name</th><th className="p-4 font-medium text-gray-500">Contact Info</th><th className="p-4 font-medium text-gray-500">Account Type</th><th className="p-4 font-medium text-gray-500">Content Type</th><th className="p-4 font-medium text-gray-500">Platform</th><th className="p-4 font-medium text-gray-500">Vertical 1</th><th className="p-4 font-medium text-gray-500">Vertical 2</th><th className="p-4 font-medium text-gray-500">Followers</th><th className="p-4 font-medium text-gray-500">Country</th><th className="p-4 font-medium text-gray-500">Language</th><th className="p-4 font-medium text-gray-500">Agency</th><th className="p-4 font-medium text-gray-500">Status</th><th className="p-4 font-medium text-gray-500 text-right">Link</th></tr></thead>
+                            <tbody className="divide-y">
+                                {currentItems.map(c => (
+                                    <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('/creators/' + c.id)}>
+                                        <td className="p-4 font-medium flex items-center gap-3">
+                                            <img src={c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random`} alt="" className="w-8 h-8 rounded-full bg-gray-200 object-cover" />
+                                            {c.name}
+                                        </td>
+                                        <td className="p-4 text-gray-500 group" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate max-w-[150px]" title={c.contactInfo}>{c.contactInfo || '-'}</span>
+                                                {c.contactInfo && (
+                                                    <button onClick={() => { navigator.clipboard.writeText(c.contactInfo); alert('Copied: ' + c.contactInfo); }} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Icons.Copy className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2 py-1 rounded-full text-xs font-medium", c.businessType === 'Business' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600')}>{c.businessType || 'Personal'}</span></td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2.5 py-0.5 rounded-full text-xs font-medium border", getAccountTypeColor(c.accountType))}>{c.accountType || 'UGC'}</span></td>
+                                        <td className="p-4 text-gray-500">{c.platform}</td>
+                                        <td className="p-4 text-gray-500">{c.vertical1}</td>
+                                        <td className="p-4 text-gray-500">{c.vertical2 || '-'}</td>
+                                        <td className="p-4 text-gray-500 font-mono">{formatNumber(c.followerCount)}</td>
+                                        <td className="p-4 text-gray-500">{c.country || '-'}</td>
+                                        <td className="p-4 text-gray-500">{c.language || '-'}</td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2 py-1 rounded-full text-xs font-medium", c.agency === 'N/A' || !c.agency ? 'bg-gray-100 text-gray-600' : 'bg-purple-50 text-purple-700')}>{c.agency || 'N/A'}</span></td>
+                                        <td className="p-4"><span className={cn("px-2 py-1 rounded-full text-xs font-semibold", c.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700')}>{c.status}</span></td>
+                                        <td className="p-4 text-right group" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-end gap-2">
+                                                {c.url ? (
+                                                    <>
+                                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 inline-block" title="Open Link">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                                                        </a>
+                                                        <button onClick={() => { navigator.clipboard.writeText(c.url); alert('Copied Link: ' + c.url); }} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Link">
+                                                            <Icons.Copy className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </>
+                                                ) : <span className="text-gray-300">-</span>}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {filtered.length > itemsPerPage && (
+                        <div className="flex justify-between items-center mt-4">
+                            <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="px-4 py-2 border rounded-md text-sm disabled:opacity-50 hover:bg-gray-50">Previous</button>
+                            <span className="text-sm text-gray-600">Page {currentPage} of {totalPages}</span>
+                            <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} className="px-4 py-2 border rounded-md text-sm disabled:opacity-50 hover:bg-gray-50">Next</button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PublisherList = () => {
+            const { creators, addCreators, settings } = useContext(StoreContext);
+            const { navigate } = useRouter();
+            const [search, setSearch] = useState('');
+            const [selectedStatuses, setSelectedStatuses] = useState([]);
+            const [currentPage, setCurrentPage] = useState(1);
+            const itemsPerPage = 20;
+
+            const filtered = creators.filter(c => {
+                const isPublisher = c.accountType === 'Publisher';
+                const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+                const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(c.status);
+                return isPublisher && matchesSearch && matchesStatus;
+            });
+            const totalPages = Math.ceil(filtered.length / itemsPerPage);
+            const currentItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+            useEffect(() => { setCurrentPage(1); }, [search, selectedStatuses]);
+
+            const fileInputRef = React.useRef(null);
+
+            const handleDownloadTemplate = () => {
+                const headers = ['Account Name', 'Contact Info', 'Agency', 'Platform', 'Vertical Tier 1', 'Vertical Tier 2', 'Account Type', 'Content Type', 'Followers', 'Country', 'Language', 'Status', 'URL', 'Avatar URL'];
+                const example = ['Example Publisher', 'email@pub.com', 'N/A', 'TikTok', 'Gaming', 'PC', 'Business', 'Publisher', '10000', 'USA', 'English', 'Active', 'https://tiktok.com/@pub', ''];
+                const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), example.join(',')].join('\n');
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "publisher_template.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const handleBulkUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    const rows = text.split('\n').filter(row => row.trim() !== '');
+                    if (rows.length < 2) return alert('Invalid CSV format');
+
+                    const newCreators = [];
+                    for (let i = 1; i < rows.length; i++) {
+                        const cols = rows[i].split(',').map(c => c.trim());
+                        if (cols.length < 1 || !cols[0]) continue;
+
+                        newCreators.push({
+                            id: crypto.randomUUID(),
+                            name: cols[0],
+                            contactInfo: cols[1] || '',
+                            agency: cols[2] || 'N/A',
+                            platform: cols[3] || 'TikTok',
+                            vertical1: cols[4] || 'Other',
+                            vertical2: cols[5] || 'Other',
+                            businessType: cols[6] || 'Personal',
+                            accountType: cols[7] || 'Publisher',
+                            followerCount: parseInt(cols[8]) || 0,
+                            country: cols[9] || '',
+                            language: cols[10] || '',
+                            status: cols[11] || 'Active',
+                            url: cols[12] || '',
+                            avatarUrl: cols[13] || '',
+                            contactLogs: []
+                        });
+                    }
+
+                    if (newCreators.length > 0) {
+                        addCreators(newCreators);
+                        alert(`Successfully imported ${newCreators.length} records!`);
+                    }
+                    event.target.value = '';
+                };
+                reader.readAsText(file);
+            };
+
+            return (
+                <div className="p-8 space-y-6">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div className="flex flex-1 gap-2 w-full md:w-auto">
+                            <div className="relative w-full max-w-sm">
+                                <Icons.Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                                <input className="w-full pl-9 h-10 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                    placeholder="Search publishers..." value={search} onChange={e => setSearch(e.target.value)} />
+                            </div>
+
+                            {/* Status Filter */}
+                            <div className="relative group">
+                                <button className="h-10 px-3 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 flex items-center gap-2 hover:bg-gray-50">
+                                    <span className="truncate max-w-[100px]">{selectedStatuses.length === 0 ? 'All Status' : `${selectedStatuses.length} Selected`}</span>
+                                    <Icons.ChevronLeft className="w-4 h-4 rotate-[-90deg]" />
+                                </button>
+                                <div className="absolute top-full left-0 pt-1 w-48 hidden group-hover:block z-20">
+                                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 space-y-1">
+                                        {settings.statuses.map(status => (
+                                            <label key={status} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                                                <input type="checkbox" checked={selectedStatuses.includes(status)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) setSelectedStatuses([...selectedStatuses, status]);
+                                                        else setSelectedStatuses(selectedStatuses.filter(t => t !== status));
+                                                    }}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                <span>{status}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={handleDownloadTemplate} className="h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">
+                                <Icons.Download className="w-4 h-4" /> Template
+                            </button>
+                            <button onClick={() => fileInputRef.current.click()} className="h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 border border-blue-600 text-blue-600 bg-white hover:bg-blue-50">
+                                <Icons.Upload className="w-4 h-4" /> Import CSV
+                            </button>
+                            <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".csv" className="hidden" />
+                            <button onClick={() => navigate('/creators/new')} className="bg-blue-600 text-white h-10 px-4 rounded-md text-sm font-medium flex items-center gap-2 hover:bg-blue-700">
+                                <Icons.Plus className="w-4 h-4" /> Add Publisher
+                            </button>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 border-b"><tr><th className="p-4 font-medium text-gray-500">Account Name</th><th className="p-4 font-medium text-gray-500">Contact Info</th><th className="p-4 font-medium text-gray-500">Account Type</th><th className="p-4 font-medium text-gray-500">Content Type</th><th className="p-4 font-medium text-gray-500">Platform</th><th className="p-4 font-medium text-gray-500">Vertical 1</th><th className="p-4 font-medium text-gray-500">Vertical 2</th><th className="p-4 font-medium text-gray-500">Followers</th><th className="p-4 font-medium text-gray-500">Country</th><th className="p-4 font-medium text-gray-500">Language</th><th className="p-4 font-medium text-gray-500">Agency</th><th className="p-4 font-medium text-gray-500">Status</th><th className="p-4 font-medium text-gray-500 text-right">Link</th></tr></thead>
+                            <tbody className="divide-y">
+                                {currentItems.map(c => (
+                                    <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('/creators/' + c.id)}>
+                                        <td className="p-4 font-medium flex items-center gap-3">
+                                            <img src={c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random`} alt="" className="w-8 h-8 rounded-full bg-gray-200 object-cover" />
+                                            {c.name}
+                                        </td>
+                                        <td className="p-4 text-gray-500 group" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate max-w-[150px]" title={c.contactInfo}>{c.contactInfo || '-'}</span>
+                                                {c.contactInfo && (
+                                                    <button onClick={() => { navigator.clipboard.writeText(c.contactInfo); alert('Copied: ' + c.contactInfo); }} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Icons.Copy className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2 py-1 rounded-full text-xs font-medium", c.businessType === 'Business' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600')}>{c.businessType || 'Personal'}</span></td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2.5 py-0.5 rounded-full text-xs font-medium border", getAccountTypeColor(c.accountType))}>{c.accountType || 'UGC'}</span></td>
+                                        <td className="p-4 text-gray-500">{c.platform}</td>
+                                        <td className="p-4 text-gray-500">{c.vertical1}</td>
+                                        <td className="p-4 text-gray-500">{c.vertical2 || '-'}</td>
+                                        <td className="p-4 text-gray-500 font-mono">{formatNumber(c.followerCount)}</td>
+                                        <td className="p-4 text-gray-500">{c.country || '-'}</td>
+                                        <td className="p-4 text-gray-500">{c.language || '-'}</td>
+                                        <td className="p-4 text-gray-500"><span className={cn("px-2 py-1 rounded-full text-xs font-medium", c.agency === 'N/A' || !c.agency ? 'bg-gray-100 text-gray-600' : 'bg-purple-50 text-purple-700')}>{c.agency || 'N/A'}</span></td>
+                                        <td className="p-4"><span className={cn("px-2 py-1 rounded-full text-xs font-semibold", c.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700')}>{c.status}</span></td>
+                                        <td className="p-4 text-right group" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-end gap-2">
+                                                {c.url ? (
+                                                    <>
+                                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 inline-block" title="Open Link">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                                                        </a>
+                                                        <button onClick={() => { navigator.clipboard.writeText(c.url); alert('Copied Link: ' + c.url); }} className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Link">
+                                                            <Icons.Copy className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </>
+                                                ) : <span className="text-gray-300">-</span>}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {filtered.length > itemsPerPage && (
+                        <div className="flex justify-between items-center mt-4">
+                            <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="px-4 py-2 border rounded-md text-sm disabled:opacity-50 hover:bg-gray-50">Previous</button>
+                            <span className="text-sm text-gray-600">Page {currentPage} of {totalPages}</span>
+                            <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} className="px-4 py-2 border rounded-md text-sm disabled:opacity-50 hover:bg-gray-50">Next</button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const CreatorDetail = ({ id }) => {
+            const { navigate } = useRouter();
+            const { creators, settings, addCreator, updateCreator, removeCreator, addVertical1, addVertical2, manageSetting, addAgency } = useContext(StoreContext);
+            const isNew = id === 'new';
+            const [data, setData] = useState({ id: 'temp', name: '', vertical1: settings.verticals1[0], vertical2: '', status: settings.statuses[0], platform: settings.platforms[0], country: COUNTRIES[0], language: LANGUAGES[0], url: '', contactInfo: '', agency: 'N/A', avatarUrl: '', accountType: settings.accountTypes[0], businessType: settings.businessTypes[0], followerCount: 0 });
+
+            useEffect(() => {
+                if (isNew) {
+                    setData({ id: crypto.randomUUID(), name: '', vertical1: settings.verticals1[0], vertical2: '', status: settings.statuses[0], platform: settings.platforms[0], country: COUNTRIES[0], language: LANGUAGES[0], url: '', contactInfo: '', agency: 'N/A', avatarUrl: '', accountType: settings.accountTypes[0], businessType: settings.businessTypes[0], followerCount: 0 });
+                } else {
+                    const found = creators.find(c => c.id === id);
+                    if (found) setData(found);
+                }
+            }, [id, creators]);
+
+            const handleAddVertical1 = () => {
+                const newV = prompt("Enter new Vertical Tier 1:");
+                if (newV) {
+                    addVertical1(newV);
+                    setData(prev => ({ ...prev, vertical1: newV }));
+                }
+            };
+
+            const handleAddVertical2 = () => {
+                const newV = prompt("Enter new Vertical Tier 2:");
+                if (newV) {
+                    addVertical2(newV);
+                    setData(prev => ({ ...prev, vertical2: newV }));
+                }
+            };
+
+            const handleManageSettings = (type, value) => {
+                if (!value) return;
+                const action = prompt(`Manage '${value}' in ${type === 'verticals1' ? 'Tier 1' : 'Tier 2'}:\nType 'delete' to remove.\nType new name to rename.`);
+                if (!action) return;
+
+                if (action.toLowerCase() === 'delete') {
+                    if (confirm(`Delete '${value}'? This will remove it from the list but keep existing records.`)) {
+                        manageSetting(type, 'delete', value);
+                        // Reset selection if deleted
+                        if (type === 'verticals1' && data.vertical1 === value) setData(p => ({ ...p, vertical1: settings.verticals1[0] }));
+                        if (type === 'verticals2' && data.vertical2 === value) setData(p => ({ ...p, vertical2: '' }));
+                    }
+                } else {
+                    manageSetting(type, 'update', value, action);
+                    if (type === 'verticals1' && data.vertical1 === value) setData(p => ({ ...p, vertical1: action }));
+                    if (type === 'verticals2' && data.vertical2 === value) setData(p => ({ ...p, vertical2: action }));
+                }
+            };
+
+            const handleAddAgency = () => {
+                const newA = prompt("Enter new Agency Name:");
+                if (newA) {
+                    addAgency(newA);
+                    setData(prev => ({ ...prev, agency: newA }));
+                }
+            };
+
+            const onSave = () => {
+                if (!data.name) return alert('Account Name Required');
+                isNew ? addCreator(data) : updateCreator(id, data);
+                navigate('/creators');
+            };
+
+            const onDelete = () => { if (confirm('Are you sure?')) { removeCreator(id); navigate('/creators'); } };
+
+            return (
+                <div className="p-8 max-w-4xl mx-auto space-y-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => navigate('/creators')} className="p-2 hover:bg-gray-100 rounded-full"><Icons.ChevronLeft className="w-5 h-5 text-gray-500" /></button>
+                            <div className="flex items-center gap-4">
+                                <img src={data.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'New Creator')}&background=random`} className="w-12 h-12 rounded-full bg-gray-200 object-cover border border-gray-200" />
+                                <h1 className="text-2xl font-bold">{isNew ? 'New Creator' : data.name}</h1>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            {!isNew && <button onClick={onDelete} className="text-red-600 px-4 py-2 text-sm font-medium border border-red-200 rounded-md hover:bg-red-50 flex items-center gap-2"><Icons.Trash2 className="w-4 h-4" /> Delete</button>}
+                            <button onClick={onSave} className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 hover:bg-blue-700"><Icons.Save className="w-4 h-4" /> Save Changes</button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-lg border shadow-sm space-y-4">
+                        <h3 className="font-semibold text-lg text-gray-800 border-b pb-2">Profile Information</h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Avatar Image URL</label>
+                                <input className="w-full border border-gray-300 rounded-md h-9 px-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={data.avatarUrl || ''} placeholder="https://example.com/image.jpg" onChange={e => setData({ ...data, avatarUrl: e.target.value })} />
+                            </div>
+
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label><input className="w-full border border-gray-300 rounded-md h-9 px-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={data.name || ''} onChange={e => setData({ ...data, name: e.target.value })} /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Contact Info</label><input className="w-full border border-gray-300 rounded-md h-9 px-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={data.contactInfo || ''} placeholder="Email, Phone, etc." onChange={e => setData({ ...data, contactInfo: e.target.value })} /></div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Account Type</label>
+                                <select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.businessType || 'Personal'} onChange={e => setData({ ...data, businessType: e.target.value })}>
+                                    {settings.businessTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Agency</label>
+                                <div className="flex gap-2">
+                                    <select className="flex-1 border border-gray-300 rounded-md h-9 px-3" value={data.agency || 'N/A'} onChange={e => setData({ ...data, agency: e.target.value })}>
+                                        {settings.agencies.map(a => <option key={a} value={a}>{a}</option>)}
+                                    </select>
+                                    <button onClick={handleAddAgency} className="bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md w-9 h-9 flex items-center justify-center font-bold text-gray-600" title="Add Agency">+</button>
+                                </div>
+                            </div>
+
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">URL</label><input className="w-full border border-gray-300 rounded-md h-9 px-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={data.url || ''} placeholder="https://..." onChange={e => setData({ ...data, url: e.target.value })} /></div>
+
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Platform</label><select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.platform} onChange={e => setData({ ...data, platform: e.target.value })}>{settings.platforms.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-700">Content Type</label>
+                                    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", getAccountTypeColor(data.accountType))}>{data.accountType}</span>
+                                </div>
+                                <select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.accountType} onChange={e => setData({ ...data, accountType: e.target.value })}>{settings.accountTypes.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Vertical Tier 1</label>
+                                <div className="flex gap-2">
+                                    <select className="flex-1 border border-gray-300 rounded-md h-9 px-3" value={data.vertical1} onChange={e => setData({ ...data, vertical1: e.target.value })}>
+                                        {settings.verticals1.map(v => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                    <button onClick={handleAddVertical1} className="p-2 border border-gray-300 rounded-md hover:bg-gray-50" title="Add Tier 1"><Icons.Plus className="w-4 h-4" /></button>
+                                    <button onClick={() => handleManageSettings('verticals1', data.vertical1)} className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 text-gray-500" title="Edit/Delete Selected"><Icons.Settings className="w-4 h-4" /></button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Vertical Tier 2</label>
+                                <div className="flex gap-2">
+                                    <select className="flex-1 border border-gray-300 rounded-md h-9 px-3" value={data.vertical2 || ''} onChange={e => setData({ ...data, vertical2: e.target.value })}>
+                                        <option value="">Select...</option>
+                                        {settings.verticals2.map(v => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                    <button onClick={handleAddVertical2} className="p-2 border border-gray-300 rounded-md hover:bg-gray-50" title="Add Tier 2"><Icons.Plus className="w-4 h-4" /></button>
+                                    <button onClick={() => handleManageSettings('verticals2', data.vertical2)} className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 text-gray-500" title="Edit/Delete Selected"><Icons.Settings className="w-4 h-4" /></button>
+                                </div>
+                            </div>
+
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Country</label><select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.country} onChange={e => setData({ ...data, country: e.target.value })}>{COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Language</label><select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.language} onChange={e => setData({ ...data, language: e.target.value })}>{LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
+
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select className="w-full border border-gray-300 rounded-md h-9 px-3" value={data.status} onChange={e => setData({ ...data, status: e.target.value })}>{settings.statuses.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Followers</label>
+                                <div className="relative">
+                                    <input type="number" className="w-full border border-gray-300 rounded-md h-9 px-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={data.followerCount || 0} onChange={e => setData({ ...data, followerCount: parseInt(e.target.value) || 0 })} />
+                                    <div className="absolute right-3 top-0 h-9 flex items-center text-sm text-gray-400 pointer-events-none bg-white pl-2">
+                                        {data.followerCount ? data.followerCount.toLocaleString() : '0'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const DataManagement = () => {
+            const { creators, settings, addCreators } = useContext(StoreContext);
+            const fileInputRef = React.useRef(null);
+            const [importStats, setImportStats] = useState(null);
+
+            const handleExport = () => {
+                const data = {
+                    exportedAt: new Date().toISOString(),
+                    version: '1.0',
+                    creators: creators,
+                    settings: settings
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `creator-admin-backup-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            };
+
+            const handleImport = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+
+                        if (data.creators && Array.isArray(data.creators)) {
+                            // Merge or replace based on user choice
+                            const action = confirm(
+                                `Found ${data.creators.length} records in backup.\n\n` +
+                                `OK = Replace all existing data\n` +
+                                `Cancel = Merge with existing data (skip duplicates)`
+                            );
+
+                            if (action) {
+                                // Replace all
+                                localStorage.setItem('creator-admin-creators', JSON.stringify(data.creators));
+                                if (data.settings) {
+                                    localStorage.setItem('creator-admin-settings', JSON.stringify(data.settings));
+                                }
+                                setImportStats({ type: 'replace', count: data.creators.length });
+                                alert(`Successfully replaced with ${data.creators.length} records! Refreshing...`);
+                                window.location.reload();
+                            } else {
+                                // Merge - add only new ones
+                                const existingIds = new Set(creators.map(c => c.id));
+                                const newCreators = data.creators.filter(c => !existingIds.has(c.id));
+                                if (newCreators.length > 0) {
+                                    addCreators(newCreators);
+                                    setImportStats({ type: 'merge', count: newCreators.length, skipped: data.creators.length - newCreators.length });
+                                    alert(`Added ${newCreators.length} new records! (${data.creators.length - newCreators.length} duplicates skipped)`);
+                                } else {
+                                    alert('No new records to add - all entries already exist.');
+                                }
+                            }
+                        } else {
+                            alert('Invalid backup file format!');
+                        }
+                    } catch (err) {
+                        alert('Error parsing file: ' + err.message);
+                    }
+                    event.target.value = '';
+                };
+                reader.readAsText(file);
+            };
+
+            const handleClearAll = () => {
+                if (confirm('⚠️ WARNING: This will delete ALL data!\n\nAre you sure?')) {
+                    if (confirm('This action cannot be undone. Type "DELETE" in the next prompt to confirm.')) {
+                        const confirmation = prompt('Type DELETE to confirm:');
+                        if (confirmation === 'DELETE') {
+                            localStorage.removeItem('creator-admin-creators');
+                            localStorage.removeItem('creator-admin-settings');
+                            alert('All data cleared! Refreshing...');
+                            window.location.reload();
+                        }
+                    }
+                }
+            };
+
+            const creatorsCount = creators.filter(c => c.accountType !== 'Publisher').length;
+            const publishersCount = creators.filter(c => c.accountType === 'Publisher').length;
+
+
+            const handleExportCSV = () => {
+                if (!creators || creators.length === 0) return alert('No data to export');
+
+                const headers = ['Account Name', 'Contact Info', 'Agency', 'Platform', 'Vertical Tier 1', 'Vertical Tier 2', 'Account Type', 'Content Type', 'Followers', 'Country', 'Language', 'Status', 'URL', 'Avatar URL', 'ID', 'Business Type'];
+
+                const rows = creators.map(c => [
+                    `"${c.name || ''}"`,
+                    `"${c.contactInfo || ''}"`,
+                    `"${c.agency || 'N/A'}"`,
+                    `"${c.platform || ''}"`,
+                    `"${c.vertical1 || ''}"`,
+                    `"${c.vertical2 || ''}"`,
+                    `"${c.accountType || ''}"`,
+                    `"${c.accountType || ''}"`, // Content Type mapped to Account Type for now as per template
+                    `"${c.followerCount || 0}"`,
+                    `"${c.country || ''}"`,
+                    `"${c.language || ''}"`,
+                    `"${c.status || ''}"`,
+                    `"${c.url || ''}"`,
+                    `"${c.avatarUrl || ''}"`,
+                    `"${c.id}"`,
+                    `"${c.businessType || 'Personal'}"`
+                ]);
+
+                const csvContent = "data:text/csv;charset=utf-8,"
+                    + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `creator_hub_export_${new Date().toISOString().split('T')[0]}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            return (
+                <div className="p-8 max-w-4xl mx-auto space-y-6">
+                    <h1 className="text-3xl font-bold mb-6">Data Management</h1>
+
+                    {/* Current Data Stats */}
+                    <div className="bg-white p-6 rounded-xl border shadow-sm">
+                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                            <Icons.Activity className="w-5 h-5 text-blue-500" />
+                            Current Data Statistics
+                        </h2>
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="bg-gray-50 p-4 rounded-lg text-center">
+                                <div className="text-3xl font-bold text-gray-800">{creators.length}</div>
+                                <div className="text-sm text-gray-500">Total Records</div>
+                            </div>
+                            <div className="bg-blue-50 p-4 rounded-lg text-center">
+                                <div className="text-3xl font-bold text-blue-600">{creatorsCount}</div>
+                                <div className="text-sm text-gray-500">Creators</div>
+                            </div>
+                            <div className="bg-purple-50 p-4 rounded-lg text-center">
+                                <div className="text-3xl font-bold text-purple-600">{publishersCount}</div>
+                                <div className="text-sm text-gray-500">Publishers</div>
+                            </div>
+                        </div>
+                        <div className="mt-4 text-xs text-gray-400">
+                            Storage: localStorage ({(JSON.stringify(creators).length / 1024).toFixed(1)} KB)
+                        </div>
+                    </div>
+
+                    {/* Export Section */}
+                    <div className="bg-white p-6 rounded-xl border shadow-sm">
+                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                            <Icons.Download className="w-5 h-5 text-green-500" />
+                            Export Data
+                        </h2>
+                        <p className="text-gray-600 mb-4">
+                            Download all your creator and publisher data as a CSV file for spreadsheet compatibility.
+                        </p>
+                        <button
+                            onClick={handleExportCSV}
+                            className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 hover:bg-green-700 transition-colors"
+                        >
+                            <Icons.Download className="w-5 h-5" />
+                            Export All Data (.csv)
+                        </button>
+                    </div>
+
+                    {/* Import Section */}
+                    <div className="bg-white p-6 rounded-xl border shadow-sm">
+                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                            <Icons.Upload className="w-5 h-5 text-blue-500" />
+                            Import Data
+                        </h2>
+                        <p className="text-gray-600 mb-4">
+                            Restore data from a previously exported CSV/JSON backup file.
+                        </p>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImport}
+                            accept=".json,.csv"
+                            className="hidden"
+                        />
+                        <button
+                            onClick={() => fileInputRef.current.click()}
+                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                        >
+                            <Icons.Upload className="w-5 h-5" />
+                            Import File
+                        </button>
+                    </div>
+
+                    {/* Troubleshooting / RLS Helper */}
+                    <div className="mt-8 border-t pt-6">
+                        <details className="group">
+                            <summary className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer hover:text-gray-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+                                Trouble seeing your data? (RLS Policies)
+                            </summary>
+                            <div className="mt-4 bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
+                                <p className="mb-2">If your data was migrated successfully but the list is empty, you need to enable Row Level Security (RLS) policies.</p>
+                                <p className="mb-2">Run this in Supabase SQL Editor:</p>
+                                <div className="relative">
+                                    <pre className="bg-gray-800 text-gray-100 p-3 rounded overflow-x-auto font-mono text-xs">
+                                        {`alter table "creators" enable row level security;
+
+create policy "Enable read access for all users"
+on "creators" for select
+using (true);
+
+create policy "Enable insert for all users"
+on "creators" for insert
+with check (true);
+
+create policy "Enable update for all users"
+on "creators" for update
+using (true);
+
+create policy "Enable delete for all users"
+on "creators" for delete
+using (true);`}
+                                    </pre>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`alter table "creators" enable row level security;\n\ncreate policy "Enable read access for all users"\non "creators" for select\nusing (true);\n\ncreate policy "Enable insert for all users"\non "creators" for insert\nwith check (true);\n\ncreate policy "Enable update for all users"\non "creators" for update\nusing (true);\n\ncreate policy "Enable delete for all users"\non "creators" for delete\nusing (true);`);
+                                            alert('Policy SQL Copied!');
+                                        }}
+                                        className="absolute top-2 right-2 bg-white text-gray-800 px-2 py-1 rounded text-xs border shadow-sm hover:bg-gray-100"
+                                    >
+                                        Copy SQL
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const { path } = useRouter();
+
+            let content;
+            if (path === '/' || path === '') content = <Dashboard />;
+            else if (path === '/creators') content = <CreatorList />;
+            else if (path === '/publishers') content = <PublisherList />;
+            else if (path === '/data') content = <DataManagement />;
+            else if (path && path.startsWith('/creators/')) {
+                const id = path.split('/')[2];
+                content = <CreatorDetail id={id} />;
+            } else {
+                content = <Dashboard />;
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+                    <Sidebar />
+                    <main className="md:pl-64 min-h-screen">
+                        {content}
+                    </main>
+                </div>
+            );
+        }
+
+        const Root = () => (
+            <SimpleRouter>
+                <StoreProvider>
+                    <App />
+                </StoreProvider>
+            </SimpleRouter>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Root />);
+    </script>
+</body>
+
+</html>
